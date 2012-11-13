@@ -39,10 +39,12 @@
     NSInteger _originalTag;
     NSInteger _parentTag;
     CGAffineTransform _originalTransform;
+    BOOL _originalStatusBarVisibility;
 }
 
 @property (nonatomic, assign) MRAdView *view;
 @property (nonatomic, readonly) MRAdViewState currentState;
+@property (nonatomic, retain, readonly) MRAdView *twoPartExpansionView;
 
 - (id)initWithAdView:(MRAdView *)adView
      allowsExpansion:(BOOL)allowsExpansion

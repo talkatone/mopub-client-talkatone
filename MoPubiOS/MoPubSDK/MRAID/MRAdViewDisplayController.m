@@ -31,7 +31,7 @@ static NSString *const kMovieWillExitNotification42 =
 
 @interface MRAdViewDisplayController ()
 
-@property (nonatomic, retain) MRAdView *twoPartExpansionView;
+@property (nonatomic, retain, readwrite) MRAdView *twoPartExpansionView;
 
 - (CGRect)defaultPosition;
 - (void)checkViewability;
@@ -58,7 +58,8 @@ static NSString *const kMovieWillExitNotification42 =
 
 - (void)moviePlayerWillEnterFullscreen:(NSNotification *)notification;
 - (void)moviePlayerDidExitFullscreen:(NSNotification *)notification;
-
+- (UIInterfaceOrientation) orientationForExpandedView;
+- (CGRect) applicationFrameForExpansionView;
 @end
 
 @implementation MRAdViewDisplayController
@@ -134,6 +135,7 @@ static NSString *const kMovieWillExitNotification42 =
 - (void)initializeJavascriptState {
     NSArray *properties = [NSArray arrayWithObjects:
                            [MRScreenSizeProperty propertyWithSize:MPApplicationFrame().size],
+                           [MROrientationProperty propertyWithOrientation:MPInterfaceOrientation()],
                            [MRStateProperty propertyWithState:_currentState],
                            nil];
     
@@ -141,8 +143,11 @@ static NSString *const kMovieWillExitNotification42 =
 }
 
 - (void)rotateToOrientation:(UIInterfaceOrientation)newOrientation {
-    [_view fireChangeEventForProperty:
-     [MRScreenSizeProperty propertyWithSize:MPApplicationFrame().size]];
+    NSArray* properties = [NSArray arrayWithObjects:
+                           [MRScreenSizeProperty propertyWithSize:MPApplicationFrame().size],
+                           [MROrientationProperty propertyWithOrientation:newOrientation],
+                           nil];
+    [_view fireChangeEventsForProperties:properties];
     [self rotateExpandedWindowsToCurrentOrientation];
 }
 
@@ -160,6 +165,7 @@ static NSString *const kMovieWillExitNotification42 =
 #pragma mark - Close API
 
 - (void)close {
+    [[UIApplication sharedApplication] setStatusBarHidden:_originalStatusBarVisibility withAnimation:UIStatusBarAnimationNone];
     [_view adWillClose];
     
     switch (_currentState) {
@@ -220,6 +226,17 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
 
 - (void)expandToFrame:(CGRect)frame withURL:(NSURL *)url blockingColor:(UIColor *)blockingColor
       blockingOpacity:(CGFloat)blockingOpacity shouldLockOrientation:(BOOL)shouldLockOrientation {
+    
+    if (_view.overridenOverlayUrl) url = _view.overridenOverlayUrl;
+    
+    BOOL forcedOrientation = _view.forceExpandedOrientation != UIDeviceOrientationUnknown;
+    if (forcedOrientation) {
+        frame = self.applicationFrameForExpansionView;
+    }
+    _originalStatusBarVisibility = [UIApplication sharedApplication].statusBarHidden;
+    if (_view.hideStatusBarWhenExpanded)
+        [[UIApplication sharedApplication] setStatusBarHidden:YES withAnimation:UIStatusBarAnimationFade];
+    
     // Save our current frame as the default frame.
     _defaultFrame = self.view.frame;
     _expandedFrame = frame;
@@ -231,12 +248,23 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
     _dimmingView.dimmingOpacity = blockingOpacity;
     [MPKeyWindow() addSubview:_dimmingView];
     
+
+    
     if (url) {
         self.twoPartExpansionView = [[[MRAdView alloc] initWithFrame:self.view.frame 
                                                      allowsExpansion:NO
-                                                    closeButtonStyle:MRAdViewCloseButtonStyleAdControlled 
+                                                    closeButtonStyle:_closeButtonStyle
                                                        placementType:MRAdViewPlacementTypeInline] autorelease];
+        if (_closeButtonStyle == MRAdViewCloseButtonStyleAlwaysVisible)
+            self.twoPartExpansionView.usesCustomCloseButton = NO;
+        
         self.twoPartExpansionView.delegate = self;
+        self.twoPartExpansionView.creativeLoader = _view.creativeLoader;
+        self.twoPartExpansionView.forceExpandedOrientation = _view.forceExpandedOrientation;
+        self.twoPartExpansionView.hideStatusBarWhenExpanded = _view.hideStatusBarWhenExpanded;
+        MRAdViewDisplayController* other = [self.twoPartExpansionView displayController];
+        other->_originalStatusBarVisibility = _originalStatusBarVisibility;
+        self.twoPartExpansionView.expanded = YES;
         [self.twoPartExpansionView loadCreativeFromURL:url];
         
         _expansionContentView = self.twoPartExpansionView;
@@ -257,6 +285,13 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
     }
     
     [self animateViewFromDefaultStateToExpandedState:_expansionContentView];
+}
+
+- (UIInterfaceOrientation) orientationForExpandedView
+{
+    UIDeviceOrientation o = _view.forceExpandedOrientation;
+    if (o == UIDeviceOrientationUnknown) return MPInterfaceOrientation();
+    return o;
 }
 
 - (void)useCustomClose:(BOOL)shouldUseCustomClose {
@@ -293,7 +328,7 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
     
     CGFloat angle = 0.0;
     
-    switch (MPInterfaceOrientation()) {
+    switch (self.orientationForExpandedView) {
         case UIInterfaceOrientationPortraitUpsideDown: angle = M_PI; break;
         case UIInterfaceOrientationLandscapeLeft: angle = -M_PI_2; break;
         case UIInterfaceOrientationLandscapeRight: angle = M_PI_2; break;
@@ -372,6 +407,7 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
 - (void)rotateExpandedWindowsToCurrentOrientation {
     // This method must have no effect if our ad isn't expanded.
     if (_currentState != MRAdViewStateExpanded) return;
+    BOOL forcedOrientation = (_view.forceExpandedOrientation != UIDeviceOrientationUnknown);
     
     UIApplication *application = [UIApplication sharedApplication];
     
@@ -384,8 +420,10 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
     CGRect f = [UIScreen mainScreen].applicationFrame;
     CGPoint centerOfApplicationFrame = CGPointMake(CGRectGetMidX(f), CGRectGetMidY(f));
     
+    if (!forcedOrientation) {
     [UIView beginAnimations:kAnimationKeyRotateExpanded context:nil];
     [UIView setAnimationDuration:0.3];
+    }
     
     // Center the view in the application frame.
     _expansionContentView.center = centerOfApplicationFrame;
@@ -393,14 +431,32 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
     [self constrainViewBoundsToApplicationFrame];
     [self applyRotationTransformForCurrentOrientationOnView:_expansionContentView];
     
+    if (!forcedOrientation)
     [UIView commitAnimations];
+}
+- (CGRect) applicationFrameForExpansionView
+{
+    if (_view.forceExpandedOrientation == UIDeviceOrientationUnknown) return MPApplicationFrame();
+ 	CGRect bounds = [UIScreen mainScreen].bounds;
+	
+	if (UIInterfaceOrientationIsLandscape(_view.forceExpandedOrientation))
+	{
+		CGFloat width = bounds.size.width;
+		bounds.size.width = bounds.size.height;
+		bounds.size.height = width;
+	}
+    
+    
+    return bounds;
+   
 }
 
 - (void)constrainViewBoundsToApplicationFrame {
     CGFloat height = _expandedFrame.size.height;
     CGFloat width = _expandedFrame.size.width;
     
-    CGRect applicationFrame = MPApplicationFrame();
+    CGRect applicationFrame = self.applicationFrameForExpansionView;
+    
     if (height > CGRectGetHeight(applicationFrame)) height = CGRectGetHeight(applicationFrame);
     if (width > CGRectGetWidth(applicationFrame)) width = CGRectGetWidth(applicationFrame);
     
@@ -436,7 +492,7 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
 
 - (CGRect)convertRectToWindowForCurrentOrientation:(CGRect)rect {
     UIWindow *keyWindow = [[UIApplication sharedApplication] keyWindow];
-    UIInterfaceOrientation orientation = MPInterfaceOrientation();
+    UIInterfaceOrientation orientation = self.orientationForExpandedView;
     
     switch (orientation) {
         case UIInterfaceOrientationPortraitUpsideDown:
@@ -482,7 +538,8 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
     [self moveViewFromWindowToDefaultSuperview];
     [_dimmingView removeFromSuperview];
     self.view.frame = _defaultFrame;
-    if (_expansionContentView != self.view) [_expansionContentView removeFromSuperview];
+    if (_expansionContentView != self.view)
+        [_expansionContentView removeFromSuperview];
     
     _currentState = MRAdViewStateDefault;
     [_view fireChangeEventForProperty:[MRStateProperty propertyWithState:_currentState]];
@@ -524,13 +581,25 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
 
 #pragma mark - MRAdViewDelegate for two-part expansion view
 
-- (UIViewController *)viewControllerForPresentingModalView {
-    return [_view.delegate viewControllerForPresentingModalView];
+//- (UIViewController *)viewControllerForPresentingModalView {
+//    return [_view.delegate viewControllerForPresentingModalView];
+//}
+// Retrieves the view controller from which modal views should be presented.
+- (void) presentModalViewController: (UIViewController*) vc
+{
+    [_view.delegate presentModalViewController:vc];
+}
+- (void) dismissModalViewController: (UIViewController*) vc
+{
+    [_view.delegate dismissModalViewController:vc];
 }
 
-- (void)adDidClose:(MRAdView *)adView {
-    [self close];
-}
+
+    // This is really not needed - it gets notified twice and crashes the app.
+//- (void)adDidClose:(MRAdView *)adView {
+//    if (self.twoPartExpansionView == adView) return;
+//    [self close];
+//}
 
 #pragma mark - Movie Player Notifications
 

@@ -14,13 +14,14 @@
 #import "MRAdViewDisplayController.h"
 #import "MRCommand.h"
 #import "MRProperty.h"
+#import "MRAdHTMLRequest.h"
 
 static NSString * const kExpandableCloseButtonImageName = @"MPCloseButtonX.png";
 static NSString * const kMraidURLScheme = @"mraid";
 
-@interface MRAdView ()
+@interface MRAdView ()<MRAdHTMLRequestDelegate>
 
-@property (nonatomic, retain) NSMutableData *data;
+//@property (nonatomic, retain) NSMutableData *data;
 @property (nonatomic, retain) MRAdViewBrowsingController *browsingController;
 @property (nonatomic, retain) MRAdViewDisplayController *displayController;
 
@@ -59,9 +60,13 @@ static NSString * const kMraidURLScheme = @"mraid";
 @synthesize delegate = _delegate;
 @synthesize usesCustomCloseButton = _usesCustomCloseButton;
 @synthesize expanded = _expanded;
-@synthesize data = _data;
+//@synthesize data = _data;
 @synthesize browsingController = _browsingController;
 @synthesize displayController = _displayController;
+@synthesize forceExpandedOrientation = _forceExpandedOrientation;
+@synthesize hideStatusBarWhenExpanded = _hideStatusBarWhenExpanded;
+@synthesize overridenOverlayUrl = _overridenOverlayUrl;
+@synthesize creativeLoader;
 
 - (id)initWithFrame:(CGRect)frame
 {
@@ -79,10 +84,14 @@ static NSString * const kMraidURLScheme = @"mraid";
         self.backgroundColor = [UIColor clearColor];
         self.opaque = NO;
         
-        _webView = [[UIWebView alloc] initWithFrame:frame];
+        CGSize s = frame.size;
+        _webView = [[UIWebView alloc] initWithFrame:CGRectMake(0, 0, s.width, s.height)];
         _webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | 
             UIViewAutoresizingFlexibleHeight;
         _webView.backgroundColor = [UIColor clearColor];
+#ifdef DEBUG
+        _webView.backgroundColor = [UIColor purpleColor];
+#endif
         _webView.clipsToBounds = YES;
         _webView.delegate = self;
         _webView.opaque = NO;
@@ -113,6 +122,7 @@ static NSString * const kMraidURLScheme = @"mraid";
                                                               closeButtonStyle:style];
         
         [_closeButton addTarget:_displayController action:@selector(closeButtonPressed) forControlEvents:UIControlEventTouchUpInside];
+        _forceExpandedOrientation = UIDeviceOrientationUnknown;
     }
     return self;
 }
@@ -121,13 +131,22 @@ static NSString * const kMraidURLScheme = @"mraid";
     _webView.delegate = nil;
     [_webView release];
     [_closeButton release];
-    [_data release];
+    [_overridenOverlayUrl release];
+//    [_data release];
     [_browsingController release];
     [_displayController release];
     [super dealloc];
 }
 
 #pragma mark - Public
+
+//- (void) setFrame:(CGRect)f
+//{
+//    [super setFrame:f];
+//    CGSize s = f.size;
+////    _webView.frame = CGRectMake(0, 0, s.width, s.height);
+//    _webView.backgroundColor = [UIColor purpleColor];
+//}
 
 - (void)setDelegate:(id<MRAdViewDelegate>)delegate {
     [_closeButton removeTarget:delegate
@@ -140,8 +159,8 @@ static NSString * const kMraidURLScheme = @"mraid";
                      action:@selector(closeButtonPressed)
            forControlEvents:UIControlEventTouchUpInside];
     
-    _browsingController.viewControllerForPresentingModalView =
-        [_delegate viewControllerForPresentingModalView];
+//    _browsingController.viewControllerForPresentingModalView =
+//        [_delegate viewControllerForPresentingModalView];
 }
 
 - (void)setExpanded:(BOOL)expanded {
@@ -166,10 +185,25 @@ static NSString * const kMraidURLScheme = @"mraid";
     return MPViewIsVisible(self);
 }
 
+- (MRAdView*) expansionView
+{
+    MRAdView* v = _displayController.twoPartExpansionView;
+    if (v) return v;
+    return self;
+}
+
 - (void)loadCreativeFromURL:(NSURL *)url {
     [_displayController revertViewToDefaultState];
     _isLoading = YES;
-    [self loadRequest:[NSURLRequest requestWithURL:url]];
+    if (creativeLoader) {
+        [creativeLoader loadCreativeAt:url for:self to:^void (NSURL* url1, NSString* html) {
+            if (!_isLoading) return;
+            if (html) [self loadHTMLString:html baseURL:url1];
+            else [self adDidFailToLoad];
+        }];
+    }
+    else
+        [self loadRequest:[NSURLRequest requestWithURL:url]];
 }
 
 - (void)loadCreativeWithHTMLString:(NSString *)html baseURL:(NSURL *)url {
@@ -220,15 +254,28 @@ static NSString * const kMraidURLScheme = @"mraid";
 #pragma mark - Private
 
 - (void)loadRequest:(NSURLRequest *)request {
-    NSURLConnection *connection = [NSURLConnection connectionWithRequest:request delegate:self];
-    if (connection) {
-        self.data = [NSMutableData data];
-    }
+    [[[MRAdHTMLRequest alloc]initWithRequest:request andDelegate:self] autorelease];
 }
 
 - (void)loadHTMLString:(NSString *)string baseURL:(NSURL *)baseURL {
     NSString *HTML = [self HTMLWithJavaScriptBridge:string];
     [_webView loadHTMLString:HTML baseURL:baseURL];
+}
+
+- (NSString*) mraidJsFragment
+{
+    static NSString* js = nil;
+    if (js != nil) return js;
+    
+    NSString *mraidBundlePath = [[NSBundle mainBundle] pathForResource:@"MRAID" ofType:@"bundle"];
+    NSBundle *mraidBundle = [NSBundle bundleWithPath:mraidBundlePath];
+    NSString *mraidPath = [mraidBundle pathForResource:@"mraid" ofType:@"js"];
+        //    NSURL *mraidUrl = [NSURL fileURLWithPath:mraidPath];
+    
+    NSString* str = [[NSString alloc] initWithContentsOfFile:mraidPath encoding:NSASCIIStringEncoding error:nil];
+    js = [[NSString stringWithFormat:@"<head>\n<script>\n%@\n</script>\n", str] retain];
+    [str release];
+    return js;
 }
 
 - (NSMutableString *)HTMLWithJavaScriptBridge:(NSString *)HTML {
@@ -239,22 +286,23 @@ static NSString * const kMraidURLScheme = @"mraid";
     NSMutableString *mutableHTML = [HTML mutableCopy];
     if (isFragment) [self convertFragmentToFullPayload:mutableHTML];
 
-    NSString *mraidBundlePath = [[NSBundle mainBundle] pathForResource:@"MRAID" ofType:@"bundle"];
-    NSBundle *mraidBundle = [NSBundle bundleWithPath:mraidBundlePath];
-    NSString *mraidPath = [mraidBundle pathForResource:@"mraid" ofType:@"js"];
-    NSURL *mraidUrl = [NSURL fileURLWithPath:mraidPath];
+    
+//    NSLog(@"mraid.js has %i characters", mraidJs.length);
+
     
     headTagRange = [mutableHTML rangeOfString:@"<head>"];
-    [mutableHTML replaceCharactersInRange:headTagRange withString:
-     [NSString stringWithFormat:@"<head><script src='%@'></script>", [mraidUrl absoluteString]]];
+    [mutableHTML replaceCharactersInRange:headTagRange withString: self.mraidJsFragment];
     
+//    [mutableHTML replaceCharactersInRange:headTagRange withString:
+//     [NSString stringWithFormat:@"<head><script src='%@'></script>", [mraidUrl absoluteString]]];
+//    NSLog(@"final HTML is:\n%@", mutableHTML);
     return [mutableHTML autorelease];
 }
 
 - (void)convertFragmentToFullPayload:(NSMutableString *)fragment {
     MPLogDebug(@"Fragment detected: converting to full payload.");
     NSString *prepend = @"<html><head>"
-    @"<meta name='viewport' content='user-scalable=no; initial-scale=1.0'/>"
+    @"<meta name='viewport' content='user-scalable=no; initial-scale=1.0; '/>"
     @"</head>"
     @"<body style='margin:0;padding:0;overflow:hidden;background:transparent;'>";
     [fragment insertString:prepend atIndex:0];
@@ -263,17 +311,18 @@ static NSString * const kMraidURLScheme = @"mraid";
 
 - (NSString *)executeJavascript:(NSString *)javascript withVarArgs:(va_list)args {
     NSString *js = [[[NSString alloc] initWithFormat:javascript arguments:args] autorelease];
+        //NSLog(@"Java script to execute:\n%@", js);
     return [_webView stringByEvaluatingJavaScriptFromString:js];
 }
 
 - (void)layoutCloseButton {
-    if (!_usesCustomCloseButton) {
+    if (!_usesCustomCloseButton && _expanded) {
         CGRect frame = _closeButton.frame;
         frame.origin.x = CGRectGetWidth(CGRectApplyAffineTransform(self.frame, self.transform)) - 
         _closeButton.frame.size.width;
         _closeButton.frame = frame;
         _closeButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-        [self addSubview:_closeButton];
+        if (_closeButton.superview != self) [self addSubview:_closeButton];
         [self bringSubviewToFront:_closeButton];
     } else {
         [_closeButton removeFromSuperview];
@@ -285,6 +334,9 @@ static NSString * const kMraidURLScheme = @"mraid";
     [self fireChangeEventForProperty:[MRPlacementTypeProperty propertyWithType:_placementType]];
     [_displayController initializeJavascriptState];
     [self fireReadyEvent];
+    
+//    NSString* mraid = [self executeJavascript:@"window.mraidbridge"];
+//    NSLog(@"mraid is %@", mraid);
 }
 
 - (BOOL)tryProcessingURLStringAsCommand:(NSString *)urlString {
@@ -317,28 +369,16 @@ static NSString * const kMraidURLScheme = @"mraid";
     return processed;
 }
 
-#pragma mark - NSURLConnectionDelegate
-
-- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response
+#pragma mark - MRAdHTMLRequestDelegate
+- (void) htmlRequest:(MRAdHTMLRequest *)request didCompleteWithData:(NSData *)data
 {
-    [self.data setLength:0];
+    NSString *str = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    [self loadHTMLString:str baseURL:request.originalRequest.URL];
+    [str release];
 }
-
-- (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data
-{
-    [self.data appendData:data];
-}
-
-- (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error
+- (void) htmlRequest:(MRAdHTMLRequest *)request didFailWithError:(NSError *)error
 {
     [self adDidFailToLoad];
-}
-
-- (void)connectionDidFinishLoading:(NSURLConnection *)connection
-{
-    NSString *str = [[NSString alloc] initWithData:self.data encoding:NSUTF8StringEncoding];
-    [self loadHTMLString:str baseURL:nil];
-    [str release];
 }
 
 #pragma mark - UIWebViewDelegate
@@ -355,7 +395,7 @@ static NSString * const kMraidURLScheme = @"mraid";
         if (success) return NO;
     }
     
-    if ([scheme isEqualToString:@"tel"] || [scheme isEqualToString:@"mailto"]) {
+    if ([scheme isEqualToString:@"tel"] || [scheme isEqualToString:@"telto"] || [scheme isEqualToString:@"mailto"] ||[scheme isEqualToString:@"sms"] || [scheme isEqualToString:@"smsto"]) {
         if ([[UIApplication sharedApplication] canOpenURL:url]) {
             [[UIApplication sharedApplication] openURL:url];
             return NO;
@@ -399,6 +439,7 @@ static NSString * const kMraidURLScheme = @"mraid";
         _isLoading = NO;
         [self adDidLoad];
         [self initializeJavascriptState];
+        [self layoutCloseButton];
     }
 }
 

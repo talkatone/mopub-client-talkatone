@@ -12,6 +12,11 @@
 #import "MRAdViewDisplayController.h"
 #import "MPGlobal.h"
 #import "MPLogging.h"
+#import <objc/runtime.h>
+#include <time.h>
+#include <xlocale.h>
+#import <EventKit/EventKit.h>
+#import <MessageUI/MessageUI.h>
 
 @implementation MRCommand
 
@@ -194,6 +199,177 @@
                                              enableForward:YES
                                              enableRefresh:YES];
     return YES;
+}
+
+@end
+
+@implementation MRStorePictureCommand
++ (void)load {
+    [MRCommand registerCommand:self];
+}
+
++ (NSString *)commandType {
+    return @"storePicture";
+}
+- (void)image:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)contextInfo
+{
+    if (error)
+    {
+        UIAlertView *alert = [[UIAlertView alloc]
+                              initWithTitle: @"Save failed"
+                              message: [NSString stringWithFormat:@"Failed to save image:\n%@", error]
+                              delegate: nil
+                              cancelButtonTitle:@"OK"
+                              otherButtonTitles:nil];
+        
+        [alert show];
+        [alert release];
+    }
+}
+- (BOOL)execute {
+    NSString *URLString = [self stringFromParametersForKey:@"url"];
+    
+    UIImage* image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:URLString]]];
+    
+    UIImageWriteToSavedPhotosAlbum(image, self, @selector(image:didFinishSavingWithError:contextInfo:), nil);
+    
+    return YES;
+}
+
+@end
+
+@implementation MRCreateCalendarEventCommand
++ (void)load {
+    [MRCommand registerCommand:self];
+}
+
++ (NSString *)commandType {
+    return @"createEvent";
+}
+
+static NSCharacterSet* tzMarkerCharacterSet = nil;
+
+    // Expects something like: 2012-12-21T10:30:15-0500
++ (id)dateFromW3CCalendarDate:(NSString*)dateString
+{
+    if (tzMarkerCharacterSet == nil)
+        tzMarkerCharacterSet = [NSCharacterSet characterSetWithCharactersInString:@"+-"];
+    
+    if ([dateString length] == 0)
+        return nil;
+    
+        // Needs to have a date and time.
+    NSArray* dateAndTime = [dateString componentsSeparatedByString:@"T"];
+    if ([dateAndTime count] != 2)
+        return nil;
+    
+    NSString* time = [dateAndTime objectAtIndex:1];
+    if ([time hasSuffix:@"Z"])
+    {
+            // Swap Z for the GMT offset.
+        time = [time stringByReplacingOccurrencesOfString:@"Z" withString:@"+0000"];
+    }
+    else
+    {
+        NSRange tzMarker = [time rangeOfCharacterFromSet:tzMarkerCharacterSet];
+        if (tzMarker.location != NSNotFound)
+        {
+                // Remove the : from the zone offset.
+            NSString* zone = [time substringFromIndex:tzMarker.location];
+            NSString* fixedZone = [zone stringByReplacingOccurrencesOfString:@":" withString:@""];
+            
+            time = [time stringByReplacingOccurrencesOfString:zone withString:fixedZone];
+            
+                // Add in zero'd seconds if seconds are missing.
+            if ([[time componentsSeparatedByString:@":"] count] < 3)
+            {
+                tzMarker.length = 0;
+                time = [time stringByReplacingCharactersInRange:tzMarker withString:@":00"];
+            }
+        }
+        else
+        {
+                // Add a GMT offset so "something" is there.
+            time = [time stringByAppendingString:@"+0000"];
+        }
+    }
+    
+    NSString* fixedDateString = [NSString stringWithFormat:@"%@T%@",
+                                 [dateAndTime objectAtIndex:0],
+                                 time];
+    
+    struct tm parsedTime;
+    const char* formatString = "%FT%T%z";
+    strptime_l([fixedDateString UTF8String], formatString, &parsedTime, NULL);
+    time_t since = mktime(&parsedTime);
+    
+    NSDate* date = [NSDate dateWithTimeIntervalSince1970:since];
+    
+    return date;
+}
+
+- (BOOL)execute {
+    NSString* dateString = [self stringFromParametersForKey:@"date"];
+    NSString* title = [self stringFromParametersForKey:@"title"];
+    NSString* body = [self stringFromParametersForKey:@"body"];
+    
+    
+    NSDate* start = [MRCreateCalendarEventCommand dateFromW3CCalendarDate:dateString];
+    NSDate* end = [start dateByAddingTimeInterval:3600];
+    
+    
+    EKEventStore* store = [[EKEventStore alloc] init];
+    EKEvent* event = [EKEvent eventWithEventStore:store];
+    
+    event.startDate = start;
+    event.endDate = end;
+    event.title = title;
+    event.notes = body;
+    
+    [store saveEvent:event span:EKSpanThisEvent error:nil];
+    
+    return YES;
+}
+
+@end
+
+@interface MRSendMailCommand(Private)<MFMailComposeViewControllerDelegate>
+@end
+
+@implementation MRSendMailCommand
++ (void)load {
+    [MRCommand registerCommand:self];
+}
+
++ (NSString *)commandType {
+    return @"sendMail";
+}
+
+- (BOOL)execute {
+    if (!MFMailComposeViewController.canSendMail) return NO;
+        // sendMail(recipient, subject, body)
+    NSString* recipient = [self stringFromParametersForKey:@"recipient"];
+    NSString* subject = [self stringFromParametersForKey:@"subject"];
+    NSString* body = [self stringFromParametersForKey:@"body"];
+    
+    MFMailComposeViewController* mail = [[MFMailComposeViewController alloc] init];
+    
+    [mail setToRecipients:[NSArray arrayWithObject:recipient]];
+    if (body.length)
+        [mail setMessageBody:body isHTML:NO];
+    if (subject.length)
+        [mail setSubject:subject];
+    
+    [self.view.delegate presentModalViewController:mail];
+    
+    [mail release];
+    
+    return YES;
+}
+
+- (void)mailComposeController:(MFMailComposeViewController *)controller didFinishWithResult:(MFMailComposeResult)result error:(NSError *)error
+{
+    [self.view.delegate dismissModalViewController:controller];
 }
 
 @end

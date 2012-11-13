@@ -72,7 +72,7 @@
       key = arguments[i];
       value = arguments[i + 1];
       
-      if (value === null) continue;
+      if (value === null || value === undefined) continue;
       
       if (isFirstArgument) {
         call += '?';
@@ -140,7 +140,8 @@
     INFO: 'info',
     READY: 'ready',
     STATECHANGE: 'stateChange',
-    VIEWABLECHANGE: 'viewableChange'
+    VIEWABLECHANGE: 'viewableChange',
+    ORIENTATIONCHANGE: 'orientationChange'
   };
   
   var PLACEMENT_TYPES = mraid.PLACEMENT_TYPES = {
@@ -175,7 +176,9 @@
   var screenSize = { width: -1, height: -1 };
 
   var placementType = PLACEMENT_TYPES.UNKNOWN;
-  
+ 
+ // Device orientation.
+ var orientation = 0;
   //////////////////////////////////////////////////////////////////////////////////////////////////
   
   var EventListeners = function(event) {
@@ -304,9 +307,15 @@
       for (var key in val) {
         if (val.hasOwnProperty(key)) expandProperties[key] = val[key];
       }
-    }
+    },
+ 
+ orientation: function(val){
+    orientation = val;
+    broadcastEvent(EVENTS.INFO, 'Set orientation to ' + stringify(val));
+    broadcastEvent(EVENTS.ORIENTATIONCHANGE, orientation);
+ }
   };
-  
+ 
   var validate = function(obj, validators, action, merge) {
     if (!merge) {
       // Check to see if any required properties are missing.
@@ -427,7 +436,11 @@
   mraid.getState = function() {
     return state;
   };
-  
+ 
+ mraid.getOrientation = function() {
+    return orientation;
+ }
+ 
   mraid.getVersion = function() {
     return mraid.VERSION;
   };
@@ -479,4 +492,44 @@
     hasSetCustomClose = true;
     bridge.executeNativeCall('usecustomclose', 'shouldUseCustomClose', shouldUseCustomClose);
   };
+ 
+ // List of supported features.
+ var SUPPORTS = {
+ orientation: 1,
+ screen: 1,
+ sms: 1,
+ phone: 1,
+ email: 1,
+ calendar: 1,
+ camera: 1
+ };
+ 
+ mraid.supports = function(f) {
+    return SUPPORTS[f] ? true : false;
+ };
+ 
+ mraid.storePicture = function(URL) {
+    if (!URL) broadcastEvent(EVENTS.ERROR, 'URL is required.', 'storePicture');
+    else bridge.executeNativeCall('storePicture', 'url', URL);
+ };
+ mraid.createEvent = function(date, title, body) {
+ if (!date) broadcastEvent(EVENTS.ERROR, 'date is required.', 'createEvent');
+ else bridge.executeNativeCall('createEvent', 'date', date, 'title', title, 'body', body);
+ };
+ 
+ mraid.makeCall = function (number) {
+    if (!number) broadcastEvent(EVENTS.ERROR, 'number is required.', 'makeCall');
+    else bridge.executeNativeCall('makeCall', 'number', number);
+ }
+ mraid.sendSMS = function (recipient, body) {
+    if (!recipient) broadcastEvent(EVENTS.ERROR, 'recipient is required.', 'sendSMS');
+    else bridge.executeNativeCall('sendSMS', 'recipient', recipient, 'body', body);
+ }
+ mraid.sendMail = function (recipient, subject, body) {
+    if (!recipient) broadcastEvent(EVENTS.ERROR, 'recipient is required.', 'sendMail');
+    else bridge.executeNativeCall('sendMail', 'recipient', recipient, 'subject', subject, 'body', body);
+ }
+ 
+ 
+ 
 }());

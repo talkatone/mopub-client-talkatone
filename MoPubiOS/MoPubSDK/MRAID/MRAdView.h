@@ -7,10 +7,10 @@
 //
 
 #import <UIKit/UIKit.h>
-
+#import "MRAdViewCreativeLoaderResultReceiver.h"
 @class MRAdViewBrowsingController, MRAdViewDisplayController, MRProperty;
 @protocol MRAdViewDelegate;
-
+@protocol MRAdViewCreativeLoader;
 enum {
     MRAdViewStateHidden = 0,
     MRAdViewStateDefault = 1,
@@ -42,8 +42,8 @@ typedef NSUInteger MRAdViewCloseButtonStyle;
     // is expanded.
     UIButton *_closeButton;
     
-    // Stores the HTML payload of a creative, when loading a creative from an NSURL.
-    NSMutableData *_data;
+//    // Stores the HTML payload of a creative, when loading a creative from an NSURL.
+//    NSMutableData *_data;
     
     // Performs in-app browser-related actions.
     MRAdViewBrowsingController *_browsingController;
@@ -70,11 +70,23 @@ typedef NSUInteger MRAdViewCloseButtonStyle;
     
     // Enum indicating whether this view is being used as an inline ad or an interstitial ad.
     MRAdViewPlacementType _placementType;
+    
+    // Forced orientation of expansion overlay
+    UIInterfaceOrientation _forceExpandedOrientation;
+    BOOL _hideStatusBarWhenExpanded;
+    
+    NSURL* _overridenOverlayUrl;
 }
 
 @property (nonatomic, assign) id<MRAdViewDelegate> delegate;
+@property (nonatomic, assign) id<MRAdViewCreativeLoader> creativeLoader;
 @property (nonatomic, assign) BOOL usesCustomCloseButton;
 @property (nonatomic, assign) BOOL expanded;
+@property (nonatomic, assign) UIInterfaceOrientation forceExpandedOrientation;
+@property (nonatomic, assign) BOOL hideStatusBarWhenExpanded;
+@property (nonatomic, retain) NSURL* overridenOverlayUrl;
+    // Expansion view (if created). may be the same (for one-part ads) or different for 2-part ads:
+@property (nonatomic, readonly) MRAdView* expansionView;
 
 - (id)initWithFrame:(CGRect)frame;
 - (id)initWithFrame:(CGRect)frame allowsExpansion:(BOOL)expansion 
@@ -94,7 +106,9 @@ typedef NSUInteger MRAdViewCloseButtonStyle;
 @required
 
 // Retrieves the view controller from which modal views should be presented.
-- (UIViewController *)viewControllerForPresentingModalView;
+- (void) presentModalViewController: (UIViewController*) vc;
+- (void) dismissModalViewController: (UIViewController*) vc;
+
 
 @optional
 
@@ -137,5 +151,13 @@ typedef NSUInteger MRAdViewCloseButtonStyle;
 
 // Called when the ad has dismissed any modal content (removing any on-screen takeovers).
 - (void)appShouldResumeFromAd:(MRAdView *)adView;
+
+@end
+
+
+@protocol MRAdViewCreativeLoader<NSObject>
+
+@required
+- (void) loadCreativeAt: (NSURL*) url for: (MRAdView*) ad to: (MRAdViewCreativeLoaderResultReceiver) receiver;
 
 @end

@@ -60,3 +60,12 @@
 
 @interface MROpenCommand : MRCommand
 @end
+
+@interface MRStorePictureCommand : MRCommand
+@end
+
+@interface MRCreateCalendarEventCommand : MRCommand
+@end
+
+@interface MRSendMailCommand : MRCommand
+@end

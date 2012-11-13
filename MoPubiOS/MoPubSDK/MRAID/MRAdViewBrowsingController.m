@@ -11,7 +11,6 @@
 #import "MRAdView+Controllers.h"
 
 @implementation MRAdViewBrowsingController
-@synthesize viewControllerForPresentingModalView = _viewControllerForPresentingModalView;
 
 - (id)initWithAdView:(MRAdView *)adView {
     self = [super init];
@@ -28,7 +27,8 @@
                                                                           delegate:self];
     
     [_view adWillPresentModalView];
-    [self.viewControllerForPresentingModalView presentModalViewController:controller animated:YES];
+    [_view.delegate presentModalViewController:controller];
+//    [self.viewControllerForPresentingModalView presentModalViewController:controller animated:YES];
     [controller startLoading];
     [controller release];
 }
@@ -42,7 +42,8 @@
 
 - (void)dismissBrowserController:(MPAdBrowserController *)browserController 
                         animated:(BOOL)animated {
-    [self.viewControllerForPresentingModalView dismissModalViewControllerAnimated:animated];
+        //[self.viewControllerForPresentingModalView dismissModalViewControllerAnimated:animated];
+    [_view.delegate dismissModalViewController:browserController];
     //[_view adWillShow];
     [_view adDidDismissModalView];
     //[_view adDidShow];

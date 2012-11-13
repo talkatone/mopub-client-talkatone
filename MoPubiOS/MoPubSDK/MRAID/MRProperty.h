@@ -63,3 +63,15 @@
 + (MRViewableProperty *)propertyWithViewable:(BOOL)viewable;
 
 @end
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+@interface MROrientationProperty : MRProperty {
+    UIInterfaceOrientation _orientation;
+}
+
+@property (nonatomic, assign) UIInterfaceOrientation orientation;
+
++ (MROrientationProperty *)propertyWithOrientation: (UIInterfaceOrientation) orientation;
+
+@end

@@ -107,3 +107,40 @@
 }
 
 @end
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+@implementation MROrientationProperty : MRProperty
+
+@synthesize orientation = _orientation;
+
++ (MROrientationProperty *)propertyWithOrientation: (UIInterfaceOrientation) orientation {
+    MROrientationProperty *property = [[[self alloc] init] autorelease];
+    property.orientation = orientation;
+    return property;
+}
+
+- (NSString *)description {
+    int o;
+    switch (_orientation)
+    {
+        case UIInterfaceOrientationPortrait:
+            o = 0;
+            break;
+        case UIInterfaceOrientationPortraitUpsideDown:
+            o = 180;
+            break;
+        case UIInterfaceOrientationLandscapeRight:
+            o = 270;
+            break;
+        case UIInterfaceOrientationLandscapeLeft:
+            o = 90;
+            break;
+        default:
+                // invalid orientation.
+            o = 0;
+    }
+    return [NSString stringWithFormat:@"orientation: %i", o];
+}
+
+@end
