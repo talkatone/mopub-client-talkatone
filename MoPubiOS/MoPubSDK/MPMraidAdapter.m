@@ -48,9 +48,15 @@
 #pragma mark -
 #pragma mark MRAdViewControllerDelegate
 
-- (UIViewController *)viewControllerForPresentingModalView {
-    return [self.delegate viewControllerForPresentingModalView];
+- (void) presentModalViewController: (UIViewController*) vc
+{
+    [self.delegate presentModalViewController:vc];
 }
+- (void) dismissModalViewController: (UIViewController*) vc
+{
+    [self.delegate dismissModalViewController:vc];
+}
+
 
 - (void)adDidLoad:(MRAdView *)adView {
     [self.delegate adapter:self didFinishLoadingAd:adView shouldTrackImpression:YES];

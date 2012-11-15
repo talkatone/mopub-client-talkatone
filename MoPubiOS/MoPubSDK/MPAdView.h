@@ -215,7 +215,8 @@ typedef enum
  * used for presenting/dismissing modal views, such as the browser view presented 
  * when a user clicks on an ad.
  */
-- (UIViewController *)viewControllerForPresentingModalView;
+- (void) presentModalViewController: (UIViewController*) vc;
+- (void) dismissModalViewController: (UIViewController*) vc;
 
 @optional
 /*

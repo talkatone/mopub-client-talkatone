@@ -8,7 +8,7 @@
 
 #import "MRAdHTMLRequest.h"
 
-@interface MRAdHTMLRequest(Private)<NSURLConnectionDelegate>
+@interface MRAdHTMLRequest(Private)<NSURLConnectionDelegate, UIWebViewDelegate>
 @end
 
 @implementation MRAdHTMLRequest
@@ -22,12 +22,28 @@
     [self retain];
     
     originalRequest = [request copy];
+    
+    NSString* userAgent = [MRAdHTMLRequest defaultUserAgent];
+    if (userAgent.length)
+    {
+        NSMutableURLRequest* r = [request mutableCopy];
+        [r setValue:userAgent forHTTPHeaderField:@"User-Agent"];
+        request = [r autorelease];
+    }
 
     conn = [[NSURLConnection alloc] initWithRequest:request delegate:self];
     data = [[NSMutableData alloc] init];
     
     return self;
 }
+
+- (id) init
+{
+        // just to test useragent we need this
+    if (!(self = [super init])) return nil;
+    return self;
+}
+
 - (void) dealloc
 {
     [conn release];
@@ -37,6 +53,48 @@
     [super dealloc];
 }
 
+#define MAX_TIMEOUT_FOR_USER_AGENT 0.3
+static NSString* _defaultUserAgent = nil;
++ (NSString*) defaultUserAgent
+{
+    static BOOL userAgentChecked = NO;
+    
+    if (userAgentChecked) return _defaultUserAgent;
+    
+    userAgentChecked = YES;
+    
+    UIWebView* w = [[UIWebView alloc] init];
+    w.delegate = [[MRAdHTMLRequest alloc] init];
+    [w loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://www.apple.com"]]];
+    
+    CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+    while (_defaultUserAgent == nil) {
+            // This executes another run loop.
+		[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
+        if (CFAbsoluteTimeGetCurrent() > start + MAX_TIMEOUT_FOR_USER_AGENT)
+        {
+            [w stopLoading];
+            break;
+        }
+    }
+
+    [w release];
+    
+    return _defaultUserAgent;
+}
+- (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType
+{
+    BOOL wasNil = (_defaultUserAgent == nil);
+	_defaultUserAgent = [[request valueForHTTPHeaderField:@"User-Agent"] copy];
+    if (wasNil && _defaultUserAgent) {
+        webView.delegate = nil;
+        [self autorelease];
+        [webView stopLoading];
+    }
+    
+        // Return no, we don't care about executing an actual request.
+	return NO;
+}
 - (NSData*) data
 {
     return data;

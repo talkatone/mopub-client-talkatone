@@ -159,8 +159,6 @@ static NSString * const kMraidURLScheme = @"mraid";
                      action:@selector(closeButtonPressed)
            forControlEvents:UIControlEventTouchUpInside];
     
-//    _browsingController.viewControllerForPresentingModalView =
-//        [_delegate viewControllerForPresentingModalView];
 }
 
 - (void)setExpanded:(BOOL)expanded {

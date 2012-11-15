@@ -55,7 +55,8 @@
 
 - (MPAdView *)adView;
 - (CGSize)maximumAdSize;
-- (UIViewController *)viewControllerForPresentingModalView;
+- (void) presentModalViewController: (UIViewController*) vc;
+- (void) dismissModalViewController: (UIViewController*) vc;
 - (MPNativeAdOrientation)allowedNativeAdsOrientation;
 
 - (void)pauseAutorefresh;

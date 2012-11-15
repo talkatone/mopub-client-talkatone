@@ -29,4 +29,6 @@
 @property (nonatomic, readonly) NSData* data;
 - (id) initWithRequest: (NSURLRequest*) request andDelegate: (NSObject<MRAdHTMLRequestDelegate>*) aDelegate;
 
+    // Gets default user agent 
++ (NSString*) defaultUserAgent;
 @end

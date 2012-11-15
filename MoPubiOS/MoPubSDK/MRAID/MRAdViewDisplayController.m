@@ -581,10 +581,6 @@ shouldLockOrientation:(BOOL)shouldLockOrientation {
 
 #pragma mark - MRAdViewDelegate for two-part expansion view
 
-//- (UIViewController *)viewControllerForPresentingModalView {
-//    return [_view.delegate viewControllerForPresentingModalView];
-//}
-// Retrieves the view controller from which modal views should be presented.
 - (void) presentModalViewController: (UIViewController*) vc
 {
     [_view.delegate presentModalViewController:vc];

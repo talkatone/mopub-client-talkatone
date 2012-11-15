@@ -192,7 +192,9 @@ typedef NSUInteger InterstitialOrientationType;
  * DEPRECATED: These methods were previously inherited from MPAdViewDelegate. They should no longer
  * be used.
  */
-- (UIViewController *)viewControllerForPresentingModalView MOPUB_DEPRECATED;
+- (void) presentModalViewController: (UIViewController*) vc;
+- (void) dismissModalViewController: (UIViewController*) vc;
+
 - (void)adViewDidFailToLoadAd:(MPAdView *)view MOPUB_DEPRECATED;
 - (void)adViewDidLoadAd:(MPAdView *)view MOPUB_DEPRECATED;
 - (void)willPresentModalViewForAd:(MPAdView *)view MOPUB_DEPRECATED;

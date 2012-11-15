@@ -469,10 +469,15 @@ NSString * const kAdTypeMraid = @"mraid";
     [self userActionDidFinishForAdapter:self.currentAdapter];
 }
 
-- (UIViewController *)viewControllerForPresentingModalView 
+- (void) presentModalViewController: (UIViewController*) vc
 {
-	return [self.adView.delegate viewControllerForPresentingModalView];
+    [self.adView.delegate presentModalViewController:vc];
 }
+- (void) dismissModalViewController: (UIViewController*) vc
+{
+    [self.adView.delegate dismissModalViewController:vc];
+}
+
 
 - (void)customLinkClickedForSelectorString:(NSString *)selectorString 
 							withDataString:(NSString *)dataString
@@ -561,7 +566,7 @@ NSString * const kAdTypeMraid = @"mraid";
 {
 	_adActionInProgress = NO;
 
-    [[self viewControllerForPresentingModalView] dismissModalViewControllerAnimated:animated];
+    [self.adView.delegate dismissModalViewController:browserController];
     
     if ([self.adView.delegate respondsToSelector:@selector(didDismissModalViewForAd:)])
         [self.adView.delegate didDismissModalViewForAd:self.adView];
@@ -570,24 +575,26 @@ NSString * const kAdTypeMraid = @"mraid";
 }
 
 - (void)browserControllerDidFinishLoad:(MPAdBrowserController *)browserController {
-    UIViewController *presentingViewController = [self viewControllerForPresentingModalView];
-    UIViewController *presentedViewController;
+//    UIViewController *presentingViewController = [self viewControllerForPresentingModalView];
+//    UIViewController *presentedViewController;
+//    
+//    if ([presentingViewController respondsToSelector:@selector(presentedViewController)]) {
+//        // For iOS 5 and above.
+//        presentedViewController = presentingViewController.presentedViewController;
+//    } else {
+//        // Prior to iOS 5, the modalViewController property holds the presented view controller.
+//        presentedViewController = presentingViewController.modalViewController;
+//    }
+//    
+//    // If the browser controller is already on-screen, don't try to present it again, or an
+//    // exception will be thrown (iOS 5 and above).
+//    if (presentedViewController == browserController) return;
     
-    if ([presentingViewController respondsToSelector:@selector(presentedViewController)]) {
-        // For iOS 5 and above.
-        presentedViewController = presentingViewController.presentedViewController;
-    } else {
-        // Prior to iOS 5, the modalViewController property holds the presented view controller.
-        presentedViewController = presentingViewController.modalViewController;
-    }
-    
-    // If the browser controller is already on-screen, don't try to present it again, or an
-    // exception will be thrown (iOS 5 and above).
-    if (presentedViewController == browserController) return;
     
     [self hideLoadingIndicatorAnimated:YES];
-    [[self viewControllerForPresentingModalView] presentModalViewController:browserController
-                                                                   animated:YES];
+    [self.adView.delegate presentModalViewController:browserController];
+//    [[self viewControllerForPresentingModalView] presentModalViewController:browserController
+//                                                                   animated:YES];
 }
 
 - (void)browserControllerWillLeaveApplication:(MPAdBrowserController *)browserController {
